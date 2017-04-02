@@ -94,4 +94,6 @@ inline T quat2xyzw(Eigen::Quaterniond q)
 {
   return make_xyzw<T>(q.x(), q.y(), q.z(), q.w());
 }
-}
+
+} // namespace mil_msgs
+
