@@ -526,7 +526,7 @@ class PassiveSonar(object):
         axes[0].set_xlabel('Time (microseconds)')
         axes[1].set_title("Cross-Correlations)")
         axes[1].set_xlabel('Lag (microseconds)')
-        plt.annotate('DTOA: {}'.format(dtoa)
+        plt.annotate('DTOA: {}'.format(dtoa))
 
         fig.set_size_inches(9.9, 5.4) # Experimentally determined
         fig.set_dpi(400)
