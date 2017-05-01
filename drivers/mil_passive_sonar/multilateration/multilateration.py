@@ -95,6 +95,45 @@ def delayed_signal_factory(pulse_signal, delay, total_duration):
     out_signal[start_idx:start_idx+len(pulse)] = pulse
     return TimeSignal1D(samples=out_signal, sampling_freq=pulse_signal.sampling_freq)
 
+def delayed_signals_from_DTOA(pulse_signal, total_duration, dtoa):
+    '''
+    Generates a list of TimeSignal1D's based on dtoa measurements
+    pulse_signal - TimeSignal1D instance to generate delayed signals from
+    total_duration - desired total_duration (in seconds) of the returned signals
+    dtoa - list of dtoas (in seconds) normalized so that they are all non-negative
+    '''
+    signals = []
+
+    for delay in dtoa:
+        if delay < 0:
+            raise ValueError("all elements of 'dtoa' must be non-negative")
+        signals.append(delayed_signal_factory(pulse_signal, delay, total_duration))
+
+    return signals
+
+def plot_signals(signals, plotting_function=None):
+    ''' Convenience function to plot a sequence of TimeSignal1D's '''
+    if not hasattr(type(signals), '__iter__'):
+        raise TypeError("'signals' must be a sequence")
+    args = []
+    for s in signals:
+        if not isinstance(s, TimeSignal1D):
+            raise TypeError("'signals' must be a sequence of TimeSignal1D's")
+        args.append(s.get_time_values())
+        args.append(s.samples)
+
+    if plotting_function is None:
+        try:
+            import matplotlib
+            matplotlib.pyplot.plot(*args)
+        except BaseException as e:
+            print e
+    else:
+        try:
+            plotting_function(*args)
+        except BaseException as e:
+            print e
+
 def quadratic(a, b, c):
     '''
     Solves a quadratic equation of the form ax^2 + bx + c = 0
