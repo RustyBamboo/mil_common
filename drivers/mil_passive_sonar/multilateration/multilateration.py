@@ -6,6 +6,70 @@ from itertools import combinations
 
 from sub8_msgs.srv import Sonar, SonarResponse
 
+class TimeSignal1D(object):
+    def __init__(self, samples, sampling_freq=1.0, start_time=0.0, copy=False):
+        '''
+        Represents a time signal sampled at a constant rate
+        samples - 1D numpy array
+        sampling_freq - sampling_frequency in Hz
+        start_time - start time (in seconds) for the corresponding time values
+        '''
+        if not isinstance(samples, np.ndarray):
+            raise TypeError("'samples' argument must be an ndarray")
+        if samples.ndim != 1:
+            raise ValueError("'samples' must be 1-dimensional")
+        self.samples = samples.copy() if copy else samples
+        self.sampling_freq = float(sampling_freq)
+        self.start_time = start_time
+
+    def __len__(self):
+        return len(self.samples)
+
+    def duration(self):
+        ''' Returns the duration (in seconds) of the signal '''
+        return (len(self.samples) - 1) / self.sampling_freq
+
+    def get_time_values(self):
+        ''' Returns an ndarray with the corresponding time values for all signal samples '''
+        return np.linspace(self.start_time, self.start_time + self.duration(), len(self.samples),
+                           endpoint=True)
+
+    def idx_at_time(self, time):
+        ''' Returns the array idx for the value corresponding to a specific time '''
+        return int(round(time * self.sampling_freq))
+
+    def at_time(self, time):
+        ''' Returns the signal's value at a specific time '''
+        return self.samples[self.idx_at_time(time)]
+
+    def time_slice(self, start=0.0, end=None):
+        ''' Returns a slice of the signal based on start and end times '''
+        if end is None:
+            end = self.duration()
+        samples = self.samples[self.idx_at_time(start) : self.idx_at_time(end) + 1]
+        return TimeSignal1D(samples, self.sampling_freq, start_time=start)
+
+    def set_time_slice(self, start, end, signal):
+        ''' Sets the values of a slice of the signal to those of another of compatible size '''
+        if len(self.time_slice(start, end)) != len(signal):
+            raise RuntimeError("destination slice has different size from input signal")
+        self.samples[self.idx_at_time(start) : self.idx_at_time(end) + 1] = signal.samples
+
+    def plot(self, plotting_function=None):
+        '''  Convenience function for plotting the signal using a provided plotting function '''
+        args = (self.get_time_values(), self.samples)
+        if plotting_function is None:
+            try:
+                import matplotlib
+                matplotlib.pyplot.plot(*args)
+            except BaseException as e:
+                print e
+        else:
+            try:
+                plotting_function(*args)
+            except BaseException as e:
+                print e
+
 def quadratic(a, b, c):
     '''
     Solves a quadratic equation of the form ax^2 + bx + c = 0
