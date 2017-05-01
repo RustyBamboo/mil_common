@@ -70,6 +70,31 @@ class TimeSignal1D(object):
             except BaseException as e:
                 print e
 
+def delayed_signal_factory(pulse_signal, delay, total_duration):
+    '''
+    Creates a TimeSignal1D instance from by shifting a pulse signal
+    pulse_signal - TimeSignal1D instance
+    delay - time (in seconds) to delay the signal
+    total_duration - desired total_duration (in seconds) of the returned signal
+    '''
+    if not isinstance(pulse_signal, TimeSignal1D):
+        raise TypeError("'pulse_signal' must be an instance of TimeSignal1D")
+
+    if delay < 0:
+        raise ValueError("'delay' must be a non-negative real number")
+
+    out_length = int(round(total_duration * pulse_signal.sampling_freq))
+    out_signal = np.zeros(out_length)
+    pulse = pulse_signal.samples
+    start_idx = int(round(delay * pulse_signal.sampling_freq))
+    space_remaining = out_length - (start_idx + len(pulse))
+
+    if space_remaining < 0:
+        pulse = pulse[:space_remaining]
+
+    out_signal[start_idx:start_idx+len(pulse)] = pulse
+    return TimeSignal1D(samples=out_signal, sampling_freq=pulse_signal.sampling_freq)
+
 def quadratic(a, b, c):
     '''
     Solves a quadratic equation of the form ax^2 + bx + c = 0
