@@ -109,8 +109,6 @@ def make_delayed_signals_from_DTOA(pulse_signal, total_duration, dtoa):
     signals = []
 
     for delay in dtoa:
-        if delay < 0:
-            raise ValueError("all elements of 'dtoa' must be non-negative")
         signals.append(make_delayed_signal(pulse_signal, delay, total_duration))
 
     return signals
@@ -167,6 +165,20 @@ def get_time_delta(ref, non_ref):
                                  start_time=-ref.duration() + signal_start_diff)
 
     return delta_t, cross_corr
+
+def get_dtoas(ref_signal, non_ref_signals):
+    '''
+    Returns difference in time of arrival measurements of non_ref observations of a ref signal.
+    ref_signal - TimeSignal1D
+    non_ref_signals - iterable of TimeSignal1D's
+    '''
+    dtoas = []
+    cross_corrs = []
+    for delayed in non_ref_signals:
+        ret = get_time_delta(ref=ref_signal, non_ref=delayed)
+        dtoas.append(ret[0])
+        cross_corrs.append(ret[1])
+    return dtoas, cross_corrs
 
 def quadratic(a, b, c):
     '''
