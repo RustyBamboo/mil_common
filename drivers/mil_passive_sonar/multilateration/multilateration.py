@@ -36,16 +36,20 @@ class TimeSignal1D(object):
 
     def idx_at_time(self, time):
         ''' Returns the array idx for the value corresponding to a specific time '''
-        return int(round(time * self.sampling_freq))
+        return int(round((time - self.start_time) * self.sampling_freq))
 
     def at_time(self, time):
         ''' Returns the signal's value at a specific time '''
         return self.samples[self.idx_at_time(time)]
 
-    def time_slice(self, start=0.0, end=None):
+    def time_slice(self, start=None, end=None):
         ''' Returns a slice of the signal based on start and end times '''
+        if start is None:
+           start = self.star_time
+
         if end is None:
-            end = self.duration()
+            end = self.start_time + self.duration()
+
         samples = self.samples[self.idx_at_time(start) : self.idx_at_time(end) + 1]
         return TimeSignal1D(samples, self.sampling_freq, start_time=start)
 
@@ -70,7 +74,7 @@ class TimeSignal1D(object):
             except BaseException as e:
                 print e
 
-def delayed_signal_factory(pulse_signal, delay, total_duration):
+def make_delayed_signal(pulse_signal, delay, total_duration):
     '''
     Creates a TimeSignal1D instance from by shifting a pulse signal
     pulse_signal - TimeSignal1D instance
@@ -80,22 +84,22 @@ def delayed_signal_factory(pulse_signal, delay, total_duration):
     if not isinstance(pulse_signal, TimeSignal1D):
         raise TypeError("'pulse_signal' must be an instance of TimeSignal1D")
 
-    if delay < 0:
-        raise ValueError("'delay' must be a non-negative real number")
+    start_time = pulse_signal.start_time + delay
 
-    out_length = int(round(total_duration * pulse_signal.sampling_freq))
-    out_signal = np.zeros(out_length)
-    pulse = pulse_signal.samples
-    start_idx = int(round(delay * pulse_signal.sampling_freq))
-    space_remaining = out_length - (start_idx + len(pulse))
+    if pulse_signal.duration() > total_duration:
+       out_signal = pulse_signal.time_slice(end=(pulse_signal.start_time + total_duration))
+       out_signal.start_time = start_time
+       return out_signal
 
-    if space_remaining < 0:
-        pulse = pulse[:space_remaining]
+    else:
+        out_length = int(round(total_duration * pulse_signal.sampling_freq))
+        out_signal = TimeSignal1D(np.zeros(out_length), sampling_freq=pulse_signal.sampling_freq)
+        out_signal.start_time = delay + pulse_signal.start_time \
+            + (pulse_signal.duration() - total_duration) / 2.0
+        out_signal.set_time_slice(delay, delay + pulse_signal.duration(), pulse_signal)
+        return out_signal
 
-    out_signal[start_idx:start_idx+len(pulse)] = pulse
-    return TimeSignal1D(samples=out_signal, sampling_freq=pulse_signal.sampling_freq)
-
-def delayed_signals_from_DTOA(pulse_signal, total_duration, dtoa):
+def make_delayed_signals_from_DTOA(pulse_signal, total_duration, dtoa):
     '''
     Generates a list of TimeSignal1D's based on dtoa measurements
     pulse_signal - TimeSignal1D instance to generate delayed signals from
@@ -107,7 +111,7 @@ def delayed_signals_from_DTOA(pulse_signal, total_duration, dtoa):
     for delay in dtoa:
         if delay < 0:
             raise ValueError("all elements of 'dtoa' must be non-negative")
-        signals.append(delayed_signal_factory(pulse_signal, delay, total_duration))
+        signals.append(make_delayed_signal(pulse_signal, delay, total_duration))
 
     return signals
 
@@ -133,6 +137,36 @@ def plot_signals(signals, plotting_function=None):
             plotting_function(*args)
         except BaseException as e:
             print e
+
+def get_time_delta(ref, non_ref):
+    '''
+    Given two signals that are identiacal except for a time delay and some noise,
+    this will return the time delay of the non_ref signal with respect to ref
+
+    ref - instance of TimeSignal1D
+    non_ref - instance of TimeSignal1D
+
+    returns: scalar (of the same type and units as an element of t)
+    delta_t - time delay of non_ref w.r.t. ref
+    cross_corr - cross-correlation of non_ref with ref
+    t_corr - time delay values corresponding to the cross-correlation
+    '''
+    if not isinstance(ref, TimeSignal1D) or not isinstance(non_ref, TimeSignal1D):
+        raise TypeError("signals must be insstances of TimeSignal1D")
+    if not np.isclose(ref.sampling_freq, non_ref.sampling_freq):
+        raise RuntimeError("signals must have the same sampling frequency")
+
+    cross_corr = np.correlate(non_ref.samples, ref.samples, mode='full')
+    t_corr = np.linspace(-ref.duration(), non_ref.duration(), len(cross_corr))
+
+    max_idx = cross_corr.argmax()
+    signal_start_diff = non_ref.start_time - ref.start_time
+    delta_t = t_corr[max_idx] + signal_start_diff
+
+    cross_corr = TimeSignal1D(cross_corr, sampling_freq=ref.sampling_freq,
+                                 start_time=-ref.duration() + signal_start_diff)
+
+    return delta_t, cross_corr
 
 def quadratic(a, b, c):
     '''
@@ -224,30 +258,6 @@ def max_delta_t(receiver0, receiver1, c):
     '''
     dist = np.linalg.norm(receiver1 - receiver0)
     return dist / c
-
-def get_time_delta(t, non_ref, ref):
-    '''
-    Given two signals that are identiacal except for a time delay and some noise,
-    this will return the time delay of the non_ref signal with respect to ref
-
-    t - 1D numpy array of time values for the elements of non_ref and ref
-    non_ref - 1D numpy array
-    ref - 1D numpy array
-
-    returns: scalar (of the same type and units as an element of t)
-    delta_t - time delay of non_ref w.r.t. ref
-    cross_corr - cross-correlation of non_ref with ref
-    t_corr - time delay values corresponding to the cross-correlation
-    '''
-    if len(non_ref) != len(ref):
-        raise RuntimeError('Signals must be of the same length')
-    if len(non_ref) != len(t):
-        raise RuntimeError('Vector of time values must have the same size as the signals')
-    cross_corr = np.correlate(non_ref, ref, mode='full')
-    t_corr = np.linspace(-t[-1], t[-1], len(cross_corr))
-    max_idx = cross_corr.argmax()
-    delta_t = t_corr[max_idx]
-    return delta_t, cross_corr, t_corr
 
 class Multilaterator(object):
     '''
