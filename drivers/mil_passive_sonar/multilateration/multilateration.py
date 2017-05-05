@@ -7,7 +7,7 @@ from itertools import combinations
 from sub8_msgs.srv import Sonar, SonarResponse
 
 class TimeSignal1D(object):
-    def __init__(self, samples, sampling_freq=1.0, start_time=0.0, copy=False):
+    def __init__(self, samples, sampling_freq=1.0, start_time=0.0, copy=True):
         '''
         Represents a time signal sampled at a constant rate
         samples - 1D numpy array
@@ -45,7 +45,7 @@ class TimeSignal1D(object):
     def time_slice(self, start=None, end=None):
         ''' Returns a slice of the signal based on start and end times '''
         if start is None:
-           start = self.star_time
+           start = self.start_time
 
         if end is None:
             end = self.start_time + self.duration()
