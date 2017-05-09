@@ -7,6 +7,7 @@ import rospy
 import tf2_ros
 from tf import transformations
 from multilateration import Multilaterator, ls_line_intersection3d, get_time_delta
+import multilateration as mlat
 import receiver_array_interfaces as rai
 
 import threading
@@ -132,7 +133,7 @@ class PassiveSonar(object):
          'serial' : ['port', 'baud', 'tx_request_code', 'tx_start_code', 'read_timeout',
                      'scalar_size', 'signal_size', 'signal_bias', 'locating_frame',
                      'receiver_array_frame'],
-         'log'    : ['log_filename' ,'locating_frame', 'receiver_array_frame']
+         'log'    : ['log_filename' ,'locating_frame', 'receiver_array_frame'],
          'sim'    : ['locating_frame', 'receiver_array_frame', 'pinger_frame']
         }
 
@@ -184,23 +185,14 @@ class PassiveSonar(object):
         
         returns: list of <self.receiver_count> dtoa measurements in units of microseconds.
         '''
-        sampling_T = 1.0 / self.sampling_frequency
-        upsamp_T = sampling_T / self.upsampling_factor
-        t_max = sampling_T * signals.shape[1]
+        signals_upsamp = np.array([x.upsample_linear(self.upsampling_factor) for x in signals])
 
-        t = np.arange(0, t_max, step=sampling_T)
-        t_upsamp = np.arange(0, t_max, step=upsamp_T)
+        dtoa, cross_corr = \
+            map(np.array, zip(*[get_time_delta(signals_upsamp[0], non_ref) for non_ref \
+                                in signals_upsamp[1:]]))
 
-        signals_upsamp = np.array([np.interp(t_upsamp, t, x) for x in signals])
+        self.visualize_dsp(signals_upsamp, cross_corr, dtoa)
 
-        dtoa, cross_corr, t_corr = \
-            map(np.array, zip(*[get_time_delta(t_upsamp, non_ref, signals_upsamp[0]) for non_ref \
-                                in signals_upsamp[1 : self.receiver_count]]))
-
-        t_corr = t_corr[0]  # should all be the same
-        self.visualize_dsp(t_upsamp, signals_upsamp, t_corr, cross_corr, dtoa)
-
-        print "dtoa: {}".format(np.array(dtoa)*1E6)
         return dtoa
 
     #Passive Sonar Services
@@ -340,7 +332,7 @@ class PassiveSonar(object):
 
     # Visualization
 
-    def visualize_dsp(self, t, signals, t_corr, cross_corr, dtoa):
+    def visualize_dsp(self, signals, cross_corr, dtoa):
         '''
         Plots the received signals and cross correlations and publishes the image to /passive_sonar/plot
         '''
@@ -351,18 +343,17 @@ class PassiveSonar(object):
 
         fig, axes = plt.subplots(nrows=2, ncols=1, sharex=False, sharey=False)
         axes[0].set_title("Recorded Signals (Black is reference)")
-        axes[0].set_xlabel('Time (microseconds)')
-        axes[1].set_title("Cross-Correlations)")
-        axes[1].set_xlabel('Lag (microseconds)')
-        plt.annotate('DTOA: {}'.format(dtoa))
+        axes[0].set_xlabel('Time (seconds)')
+        axes[1].set_title("Cross-Correlations")
+        axes[1].set_xlabel('Lag (seconds)')
 
         fig.set_size_inches(9.9, 5.4) # Experimentally determined
         fig.set_dpi(400)
         fig.tight_layout(pad=2)
 
-        axes[0].plot(t, signals[0], linewidth=0.75, color='black') # reference
-        axes[0].plot(t, signals[1:].T, linewidth=0.75 )
-        axes[1].plot(t_corr, cross_corr.T, linewidth=0.75)
+        signals[0].plot(axes[0].plot, c='k', lw=0.75)
+        mlat.plot_signals(signals[1:], axes[0].plot, lw=0.75)
+        mlat.plot_signals(cross_corr, axes[1].plot, lw=0.75)
 
         fig.canvas.draw() # render plot
         plot_img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')

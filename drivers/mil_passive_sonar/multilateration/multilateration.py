@@ -71,18 +71,18 @@ class TimeSignal1D(object):
         new_freq = 1.0 / dt
         return TimeSignal1D(upsamp_signal, sampling_freq=new_freq, start_time=self.start_time)
 
-    def plot(self, plotting_function=None):
+    def plot(self, plotting_function=None, **kwargs):
         '''  Convenience function for plotting the signal using a provided plotting function '''
         args = (self.get_time_values(), self.samples)
         if plotting_function is None:
             try:
                 import matplotlib
-                matplotlib.pyplot.plot(*args)
+                matplotlib.pyplot.plot(*args, **kwargs)
             except BaseException as e:
                 print e
         else:
             try:
-                plotting_function(*args)
+                plotting_function(*args, **kwargs)
             except BaseException as e:
                 print e
 
@@ -125,7 +125,7 @@ def make_delayed_signals_from_DTOA(pulse_signal, total_duration, dtoa):
 
     return signals
 
-def plot_signals(signals, plotting_function=None):
+def plot_signals(signals, plotting_function=None, **kwargs):
     ''' Convenience function to plot a sequence of TimeSignal1D's '''
     if not hasattr(type(signals), '__iter__'):
         raise TypeError("'signals' must be a sequence")
@@ -139,12 +139,12 @@ def plot_signals(signals, plotting_function=None):
     if plotting_function is None:
         try:
             import matplotlib
-            matplotlib.pyplot.plot(*args)
+            matplotlib.pyplot.plot(*args, **kwargs)
         except BaseException as e:
             print e
     else:
         try:
-            plotting_function(*args)
+            plotting_function(*args, **kwargs)
         except BaseException as e:
             print e
 

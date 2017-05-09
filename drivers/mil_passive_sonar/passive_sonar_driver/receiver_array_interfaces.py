@@ -5,7 +5,7 @@ import numpy as np
 import tf2_ros
 import serial
 
-__author__ == 'David Soto'
+__author__ = 'David Soto'
 
 '''
 This file contains multiple receiver array interfaces for both simulated and real passive
@@ -175,9 +175,9 @@ class _Logged(ReceiverArrayInterface):
 	self.iter_num = 0
 	try:
 	    self.np_log = np.load(self.log_filename)
-	except Exception as e:
-	    rospy.logerr('Unable to access log file at path ' + self.log_filename + '. '
-			 + str(e))
+	except IOError as e:
+            rospy.logerr('PASSIVE SONAR: Unable to access log file.')
+            raise e
 
     def input_request(self):
 	try:

@@ -15,7 +15,7 @@ receiver_locations: # position of non-reference receivers (reference (origin) no
 input_mode : log
 input_timeout : 1.0
 sampling_frequency : 486618
-log_filename : $(find mil_passive_sonar)/launch/logs/sample_passive_sonar_log.npz
+log_filename : "/home/santiago/mil_ws/src/mil_common/drivers/mil_passive_sonar/launch/logs/sample_log.npz"
 locating_frame : map
 receiver_array_frame : hydrophones
 
