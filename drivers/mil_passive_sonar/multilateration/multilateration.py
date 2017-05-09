@@ -59,6 +59,18 @@ class TimeSignal1D(object):
             raise RuntimeError("destination slice has different size from input signal")
         self.samples[self.idx_at_time(start) : self.idx_at_time(end) + 1] = signal.samples
 
+    def upsample_linear(self, upsample_factor):
+        '''
+        Linearly interpolates intermediate values to return an upsampled version of the signal
+        upsample_factor - float (factor by which to increase the number of samples
+        '''
+        new_n = int(round(len(self) * upsample_factor))
+        new_time_vals = np.linspace(self.start_time, self.start_time + self.duration(), new_n)
+        upsamp_signal = np.interp(new_time_vals, self.get_time_values(), self.samples)
+        dt = new_time_vals[1] - new_time_vals[0]
+        new_freq = 1.0 / dt
+        return TimeSignal1D(upsamp_signal, sampling_freq=new_freq, start_time=self.start_time)
+
     def plot(self, plotting_function=None):
         '''  Convenience function for plotting the signal using a provided plotting function '''
         args = (self.get_time_values(), self.samples)
