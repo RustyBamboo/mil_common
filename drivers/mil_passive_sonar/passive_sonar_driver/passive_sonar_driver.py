@@ -7,6 +7,7 @@ import rospy
 import tf2_ros
 from tf import transformations
 from multilateration import Multilaterator, ls_line_intersection3d, get_time_delta
+import receiver_array_interfaces as rai
 
 import threading
 import serial
@@ -20,7 +21,6 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import Header
 from mil_passive_sonar.srv import *
 
-import receiver_array_interfaces as rai
 
 __author__ = 'David Soto'
 
