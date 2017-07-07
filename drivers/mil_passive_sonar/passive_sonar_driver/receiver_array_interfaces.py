@@ -12,6 +12,21 @@ This file contains multiple receiver array interfaces for both simulated and rea
 sonar functionality
 '''
 
+def _load_interface_params(interface, param_names):
+    '''
+    Load params relevant to this interface as specified in the PassiveSonar object's load_params
+      method in passive_sonar_driver.py
+    These parameters can be accessed as self.<param_names>
+
+    @param interface Interface object derived from the ReceiverArrayInterface class
+    @param param_names List of names of ros params to load
+    '''
+    load = lambda prop: setattr(interface, prop, rospy.get_param('passive_sonar/' + prop))
+    try:
+        [load(x) for x in param_names]
+    except KeyError as e:
+        raise IOError('A required rosparam was not declared: ' + str(e))
+
 class ReceiverArrayInterface(object):
     '''
     This class encapsulates the process of acquiring signals from the receiver array
@@ -22,13 +37,14 @@ class ReceiverArrayInterface(object):
     def input_request(self):
 	'''
 	The driver will call this function to request signal and tf data.
-	Inheriting classes SHOULD OVERRIDE this method and do the following:
+	Inheriting classes MUST OVERRIDE this method and do the following:
 	1) assign signals to self.signals
 	2) assign tf translation to self.translation
 	3) assign tf rotation to self.rotation
 	4) assign True to self.ready
 	'''
-	pass
+        msg = 'Derived class of {} (mil_passive_sonar pkg) failed to override the input_request method'
+	rospy.logerr(msg.format(type(self)))
 
     def get_input(self):
 	'''
@@ -63,11 +79,7 @@ class _Serial(ReceiverArrayInterface):
     def __init__(self, param_names, num_receivers):
 	self.num_receivers = num_receivers
 
-	load = lambda prop: setattr(self, prop, rospy.get_param('passive_sonar/' + prop))
-	try:
-	    [load(x) for x in param_names]
-	except KeyError as e:
-	    raise IOError('A required rosparam was not declared: ' + str(e))
+        _load_interface_params(self, param_names)
 
 	self.tf2_buf = tf2_ros.Buffer()
 
@@ -82,9 +94,8 @@ class _Serial(ReceiverArrayInterface):
 	try:
 	    self._request_signals()
 	    self._receive_signals()
-	    T = self.get_receiver_pose(rospy.Time.now(), self.receiver_array_frame,
-				     self.locating_frame)
-	    self.translation, self.rotation = T
+	    self.translation, self.rotation = \
+                self.get_receiver_pose(rospy.Time.now(), self.receiver_array_frame, self.locating_frame)
 	    self.ready = True
 	except Exception as e:
 	    rospy.logerr(str(e))
@@ -167,11 +178,7 @@ class _Logged(ReceiverArrayInterface):
     '''
 
     def __init__(self, param_names):
-	load = lambda prop: setattr(self, prop, rospy.get_param('passive_sonar/' + prop))
-	try:
-	    [load(x) for x in param_names]
-	except KeyError as e:
-	    raise IOError('A required rosparam was not declared: ' + str(e))
+        _load_interface_params(self, param_names)
 	self.iter_num = 0
 	try:
 	    self.np_log = np.load(self.log_filename)
@@ -197,11 +204,7 @@ class _Simulated(ReceiverArrayInterface):
     pulse.
     '''
     def __init__(self, param_names):
-	load = lambda prop: setattr(self, prop, rospy.get_param('passive_sonar/' + prop))
-	try:
-	    [load(x) for x in param_names] # loads tf frame ids
-	except KeyError as e:
-	    raise IOError('A required rosparam was not declared: ' + str(e))
+        _load_interface_params(self, param_names)
 
         # We will need to determine Receiver frame pose in map frame and pinger frame in
         # receiver frame
