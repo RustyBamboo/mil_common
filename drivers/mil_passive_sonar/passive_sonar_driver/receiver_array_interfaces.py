@@ -4,6 +4,7 @@ import rospy
 import numpy as np
 import tf2_ros
 import serial
+import traceback
 
 __author__ = 'David Soto'
 
@@ -32,19 +33,19 @@ class ReceiverArrayInterface(object):
     This class encapsulates the process of acquiring signals from the receiver array
     and acquiring the pose of the receiver array in a world fixed frame.
     '''
-    ready = False  # Request would be immediately responded to if made
+    ready = False  # Request would be immediately responded to this wasn't initialized to False
 
     def input_request(self):
 	'''
 	The driver will call this function to request signal and tf data.
 	Inheriting classes MUST OVERRIDE this method and do the following:
-	1) assign signals to self.signals
-	2) assign tf translation to self.translation
-	3) assign tf rotation to self.rotation
-	4) assign True to self.ready
+	1) Store signals in self.signals
+	2) Store receiver translation in self.translation (3x1 numpy array)
+	3) Store receiver rotation in self.rotation (3x3 numpy array)
+	4) Set self.ready to true once the above things are done
 	'''
         msg = 'Derived class of {} (mil_passive_sonar pkg) failed to override the input_request method'
-	rospy.logerr(msg.format(type(self)))
+        rospy.logerr(msg.format(type(self)))
 
     def get_input(self):
 	'''
@@ -98,7 +99,7 @@ class _Serial(ReceiverArrayInterface):
                 self.get_receiver_pose(rospy.Time.now(), self.receiver_array_frame, self.locating_frame)
 	    self.ready = True
 	except Exception as e:
-	    rospy.logerr(str(e))
+	    rospy.logerr(traceback.format_exc())
 	    raise e
  
     def _request_signals(self):
@@ -182,6 +183,7 @@ class _Logged(ReceiverArrayInterface):
 	self.iter_num = 0
 	try:
 	    self.np_log = np.load(self.log_filename)
+            rospy.loginfo('Loaded log file: ' + self.log_filename)
 	except IOError as e:
             rospy.logerr('PASSIVE SONAR: Unable to access log file.')
             raise e
@@ -193,6 +195,9 @@ class _Logged(ReceiverArrayInterface):
 	    self.rotation = self.np_log['rot'][self.iter_num]
 	    self.ready = True
 	    self.iter_num += 1
+        except ImportError as e:
+            rospy.logerr(traceback.format_exc())
+            raise e
 	except IndexError as e:
 	    self.ready = False
 	    raise StopIteration('The end of the log was reached.')

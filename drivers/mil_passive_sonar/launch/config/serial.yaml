@@ -1,15 +1,9 @@
 # Physical parameters
 c : 1.484 # speed of sound in medium
 receiver_locations: # position of non-reference receivers (reference (origin) not included)
-  - x : -25.4
-    y :     0
-    z :  25.4
-  - x :  25.4
-    y :     0
-    z :     0
-  - x :     0
-    y : -25.4
-    z :     0
+  - [-25.4,     0, 25.4]
+  - [ 25.4,     0,    0]
+  - [    0, -25.4,    0]
 
 # Input parameters
 input_mode : serial
