@@ -50,32 +50,30 @@ class TimeSignal1D(object):
 
     def idx_at_time(self, time):
         ''' Returns the array idx for the value corresponding to a specific time '''
-        return int(round((time - self.start_time) * self.sampling_freq))
+        delta = time - self.start_time
+        round_idx = np.round(delta * self.sampling_freq)
+        float_idx = delta * self.sampling_freq
+        if np.isclose(1.0 - np.fabs(float_idx - round_idx), 1.0):
+            return int(round(float_idx))
+        else:
+            return int(np.floor(float_idx))
 
     def at_time(self, time):
         ''' Returns the signal's value at a specific time '''
         return self.samples[self.idx_at_time(time)]
 
-    def time_slice(self, start=None, end=None):
+    def time_slice(self, start=None, end=None, copy=True):
         ''' Returns a slice of the signal based on start and end times '''
-        if start is None:
-           start = self.start_time
-
-        if end is None:
-            end = self.start_time + self.duration()
-
-        samples = self.samples[self.idx_at_time(start) : self.idx_at_time(end) + 1]
-        return TimeSignal1D(samples, self.sampling_freq, start_time=start)
+        start = self.start_time if start is None else start
+        end = self.start_time + self.duration if end is None else end
+        samples = self.samples[self.idx_at_time(start): self.idx_at_time(end) + 1]
+        return TimeSignal1D(samples, self.sampling_freq, start_time=start, copy=copy)
 
     def set_time_slice(self, start, end, signal):
         ''' Writes the values of a TimeSignal1D to a slice of the current one '''
-        L0 = len(self.time_slice(start, end))
-        L1 = len(signal)
         if len(self.time_slice(start, end)) != len(signal):
-            print len(self.time_slice(start, end)), len(signal)
-            print self.time_slice(start, end).sampling_freq, signal.sampling_freq
             raise RuntimeError("Destination slice has different size from input signal")
-        self.samples[self.idx_at_time(start) : self.idx_at_time(end) + 1] = signal.samples
+        self.samples[self.idx_at_time(start): self.idx_at_time(end) + 1] = signal.samples
 
     def upsample_linear(self, upsample_factor):
         '''
@@ -104,6 +102,7 @@ class TimeSignal1D(object):
             except BaseException:
                 print traceback.format_exc()
 
+
 def make_delayed_signal(reference_signal, delay, total_duration):
     '''
     Creates a TimeSignal1D instance from by shifting a pulse signal
@@ -113,22 +112,29 @@ def make_delayed_signal(reference_signal, delay, total_duration):
     '''
     if not isinstance(reference_signal, TimeSignal1D):
         raise TypeError("'pulse_signal' must be an instance of TimeSignal1D")
+    assert total_duration > 0, 'Durations must be positive values'
+
+    num_samples_float = total_duration * reference_signal.sampling_freq + 1.0
+    num_samples_round = np.round(num_samples_float)
+    if np.isclose(1.0 - np.fabs(num_samples_float - num_samples_round), 1.0):
+        n = int(num_samples_round)
+    else:
+        n = int(np.floor(num_samples_float))
 
     out_signal = TimeSignal1D(
-        samples=np.zeros(int(np.ceil(total_duration * reference_signal.sampling_freq))),
+        samples=np.zeros(n),
         sampling_freq=reference_signal.sampling_freq,
         start_time=delay + reference_signal.start_time + (reference_signal.duration() - total_duration) / 2.0
     )
-
     copy_start = max(reference_signal.start_time + delay, out_signal.start_time)
     copy_end = min(
         reference_signal.start_time + reference_signal.duration() + delay,
-        out_signal.start_time + out_signal.duration()
+        out_signal.start_time + total_duration
     )
 
-    # TODO: handle this being off  by one in either direction
     out_signal.set_time_slice(copy_start, copy_end, reference_signal)
     return out_signal
+
 
 def make_delayed_signals_from_DTOA(reference_signal, dtoa, total_duration=None, include_reference=True):
     '''
