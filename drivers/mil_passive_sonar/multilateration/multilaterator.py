@@ -34,9 +34,9 @@ class Multilaterator(object):
         self.pairs = list(combinations(range(self.n), 2))
         self.c = c
         self.method = method
-        self.solvers = {'bancroft' : self.estimate_pos_bancroft,
-                        'LS'       : lambda dtoa: self.estimate_pos_LS(dtoa, self.cost_LS),
-                        'LS1'      : lambda dtoa: self.estimate_pos_LS1(dtoa, self.cost_LS)}
+        self.solvers = {'bancroft': self.estimate_pos_bancroft,
+                        'LS': lambda dtoa: self.estimate_pos_LS(dtoa, self.cost_LS),
+                        'LS1': lambda dtoa: self.estimate_pos_LS(dtoa, self.cost_LS1)}
 
     def get_pulse_location(self, dtoa, method=None):
         '''
@@ -56,25 +56,30 @@ class Multilaterator(object):
         Uses the Bancroft Algorithm to solve for the position of a source base on dtoa measurements
         '''
         N = len(dtoa)
-        if N < 4:
-            raise RuntimeError('At least 4 dtoa measurements are needed')
+        if N < 3:
+            raise RuntimeError('At least 3 dtoa measurements are needed')
 
-        L = lambda a, b: a[0]*b[0] + a[1]*b[1] + a[2]*b[2] - a[3]*b[3]
+        # Account for reference receiver/signal
+        receiver_locations = np.concatenate((np.array([[0, 0, 0]]), self.receiver_locations))
+        dtoa = [0, ] + dtoa
+
+        def L(a, b):
+            return a[0]*b[0] + a[1]*b[1] + a[2]*b[2] - a[3]*b[3]
 
         def get_B(delta):
-            B = np.zeros((N, 4))
-            for i in xrange(N):
-                B[i] = np.concatenate([self.receiver_locations[i]/(self.c), [-dtoa[i]]]) + delta
+            B = np.zeros((N + 1, 4))
+            for i in xrange(N + 1):
+                B[i] = np.concatenate([receiver_locations[i]/(self.c), [-dtoa[i]]]) + delta
             return B
 
         delta = min([.1 * np.random.randn(4) for i in xrange(10)],
-                    key=lambda delta: np.linalg.cond(get_B(delta)))
-        # delta = np.zeros(4) # gives very good heading for noisy timestamps,
+                     key=lambda delta: np.linalg.cond(get_B(delta)))
+        # delta = np.zeros(4)  # gives very good heading for noisy timestamps,
         # although range is completely unreliable
 
         B = get_B(delta)
-        a = np.array([0.5 * L(B[i], B[i]) for i in xrange(N)])
-        e = np.ones(N)
+        a = np.array([0.5 * L(B[i], B[i]) for i in xrange(N + 1)])
+        e = np.ones(N + 1)
 
         Bpe = np.linalg.lstsq(B, e)[0]
         Bpa = np.linalg.lstsq(B, a)[0]
@@ -91,7 +96,7 @@ class Multilaterator(object):
             u = Bpa + Lambda * Bpe
             position = u[:3] - delta[:3]
             time = u[3] + delta[3]
-            if any(dtoa[i] < time for i in xrange(N)): continue
+            if any(dtoa[i] < time for i in xrange(N + 1)): continue
             res.append(position*self.c)
         if len(res) == 1:
             source = res[0]
@@ -106,12 +111,12 @@ class Multilaterator(object):
             source = [0, 0, 0]
         return source
 
-    def estimate_pos_LS(self, dtoa, cost_func):
+    def estimate_pos_LS(self, dtoa, cost_func, init_guess=None):
         '''
         Uses the a minimization routine to solve for the position of a source base on dtoa measurements
         '''
         self.dtoa = dtoa
-        init_guess = np.random.normal(0,100,3)
+        init_guess = init_guess if init_guess is not None else np.random.normal(size=3)
         opt = {'disp': 0}
         opt_method = 'Powell'
         result = optimize.minimize(cost_func, init_guess, method=opt_method, options=opt, tol=1e-15)
@@ -155,7 +160,6 @@ class Multilaterator(object):
             cost += (np.linalg.norm(x-rcv[pair[0]]) - np.linalg.norm(x-rcv[pair[1]])
                      - c*(t[pair[0]] - t[pair[1]])) ** 2
         return cost
-
 def get_time_delta(ref, non_ref):
     '''
     Given two signals that are identical except for a time delay and some noise,
@@ -182,7 +186,7 @@ def get_time_delta(ref, non_ref):
     delta_t = t_corr[max_idx] + signal_start_diff
 
     cross_corr = mlat.TimeSignal1D(cross_corr, sampling_freq=ref.sampling_freq,
-                              start_time=-ref.duration() + signal_start_diff)
+                                   start_time=-ref.duration() + signal_start_diff)
 
     return delta_t, cross_corr
 
@@ -208,7 +212,7 @@ def quadratic(a, b, c):
     '''
     discriminant = b*b - 4*a*c
     if discriminant >= 0:
-        first_times_a = (-b+math.copysign(math.sqrt(discriminant), -b))/2
+        first_times_a = (-b+np.copysign(np.sqrt(discriminant), -b))/2
         return [first_times_a/a, c/first_times_a]
     else:
         return []
