@@ -6,17 +6,18 @@ receiver_locations: # position of non-reference receivers (reference (origin) no
   - [    0, 25.4,  0]
 
 # Input parameters
-input_mode : log
+input_mode : sim
 input_timeout : 1.0
-sampling_freq : 486618
-log_filename : "/home/santiago/sonar_log.npz"
+pinger_freq : 35000
+sampling_freq : 500000
 locating_frame : map
+pinger_frame : pinger
 receiver_array_frame : hydrophones
+noise_sigma : 0.01
 
 # Algorithm parameters
 method : "LS"
 target_frequency : 35000
-upsampling_factor : 20
+upsampling_factor : 1
 min_variance : 200
 observation_buffer_size : 200
-

@@ -1,10 +1,6 @@
 <launch>
   <arg name="input" default="log" />
 
-  <!-- Not actually needed with log input -->
-  <node pkg="tf2_ros" type="static_transform_publisher" name="tf_bc"
-        args="0 0 0 0 0 0 1 hydrophones map" />
-
   <rosparam file="$(find mil_passive_sonar)/launch/config/$(arg input).yaml"  ns="passive_sonar"
             subst_value="true" />
   <node pkg="mil_passive_sonar" type="driver.py" name="passive_sonar" output="screen"/>
