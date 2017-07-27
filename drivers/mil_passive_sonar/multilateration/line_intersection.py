@@ -8,7 +8,8 @@ def ls_line_intersection3d(start, end):
     Find the intersection of lines in the least-squares sense.
     start - Nx3 numpy array of start points
     end - Nx3 numpy array of end points
-    http://cal.cs.illinois.edu/~johannes/research/LS_line_intersect.pdf
+    http://www.mathworks.com/matlabcentral/fileexchange/37192-intersection-point-of-lines-in-3d-space
+    Note: Not performing very well as of yet
     '''
     if len(start) != len(end):
         raise RuntimeError('Dimension mismatch')
@@ -16,27 +17,49 @@ def ls_line_intersection3d(start, end):
         raise RuntimeError('Insufficient line count ({})'.format(len(start)))
     dir_vecs = end - start
     lengths = np.linalg.norm(dir_vecs).reshape((-1, 1))
-    dir_vecs = dir_vecs / lengths
-    nx = dir_vecs[:, 0]
-    ny = dir_vecs[:, 1]
-    nz = dir_vecs[:, 2]
+    norm_dir_vecs = dir_vecs / lengths
+    nx = norm_dir_vecs[:, 0]
+    ny = norm_dir_vecs[:, 1]
+    nz = norm_dir_vecs[:, 2]
     XX = nx * nx - 1
     YY = ny * ny - 1
     ZZ = nz * nz - 1
-    XY = nx * ny - 1
-    XZ = nx * nz - 1
-    YZ = ny * nz - 1
-    AX = start[:, 0]
-    AY = start[:, 1]
-    AZ = start[:, 2]
+    XY = nx * ny
+    XZ = nx * nz
+    YZ = ny * nz
     S = np.array([[np.sum(XX), np.sum(XY), np.sum(XZ)],
                   [np.sum(XY), np.sum(YY), np.sum(YZ)],
                   [np.sum(XZ), np.sum(YZ), np.sum(ZZ)]])
+    AX = start[:, 0]
+    AY = start[:, 1]
+    AZ = start[:, 2]
     CX = np.sum(AX * XX + AY * XY + AZ * XZ)
     CY = np.sum(AX * XY + AY * YY + AZ * YZ)
     CZ = np.sum(AX * XZ + AY * YZ + AZ * ZZ)
     C = np.stack((CX, CY, CZ))
-    return np.linalg.lstsq(S, C)[0]
+    return np.linalg.pinv(S).dot(C)
+
+
+def ls_line_intersection3d_(start, end):
+    '''
+    Find the intersection of lines in the least-squares sense.
+    start - Nx3 numpy array of start points
+    end - Nx3 numpy array of end points
+    http://cal.cs.illinois.edu/~johannes/research/LS_line_intersect.pdf
+    Note: Not working correctly yet
+    '''
+    dir_vecs = end - start
+    lengths = np.linalg.norm(dir_vecs).reshape((-1, 1))
+    dir_vecs = dir_vecs / lengths
+    I = np.eye(3)
+    R = np.zeros((3, 3))
+    Q = np.zeros(3)
+    for i, N in enumerate(dir_vecs):
+        r = I - N.T.dot(N)
+        R += r
+        q = r.dot(start[i])
+        Q += q
+    return np.linalg.pinv(R).dot(Q)
 
 
 def ls_line_intersection2d(start, end):
@@ -49,7 +72,7 @@ def ls_line_intersection2d(start, end):
     if len(start) != len(end):
         raise RuntimeError('Dimension mismatch')
     if len(start) < 2:
-        raise RuntimeError('Insufficient line count')
+        raise RuntimeError('Insufficient line count ({})'.format(len(start)))
     dir_vecs = end - start
     lengths = np.linalg.norm(dir_vecs).reshape((-1, 1))
     dir_vecs = dir_vecs / lengths
@@ -64,4 +87,4 @@ def ls_line_intersection2d(start, end):
         A_sum += A
         Ap_sum += Ap
 
-    return np.linalg.lstsq(A, Ap_sum)[0]
+    return np.linalg.lstsq(A_sum, Ap_sum)[0]

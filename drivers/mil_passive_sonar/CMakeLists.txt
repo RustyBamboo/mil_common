@@ -12,7 +12,8 @@ find_package(catkin
 add_service_files(
   FILES
     GetPulseHeading.srv
-    EstimatePingerPosition.srv
+    EstimatePingerPosition2D.srv
+    EstimatePingerPosition3D.srv
     ResetPositionEstimate.srv
     StartLogging.srv
     SaveLog.srv
