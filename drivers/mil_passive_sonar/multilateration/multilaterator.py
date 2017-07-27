@@ -72,9 +72,9 @@ class Multilaterator(object):
                 B[i] = np.concatenate([receiver_locations[i]/(self.c), [-dtoa[i]]]) + delta
             return B
 
-        delta = min([.1 * np.random.randn(4) for i in xrange(10)],
-                     key=lambda delta: np.linalg.cond(get_B(delta)))
-        # delta = np.zeros(4)  # gives very good heading for noisy timestamps,
+        # delta = min([.1 * np.random.randn(4) for i in xrange(10)],
+        #             key=lambda delta: np.linalg.cond(get_B(delta)))
+        delta = np.zeros(4)  # gives very good heading for noisy timestamps,
         # although range is completely unreliable
 
         B = get_B(delta)
@@ -116,6 +116,7 @@ class Multilaterator(object):
         Uses the a minimization routine to solve for the position of a source base on dtoa measurements
         '''
         self.dtoa = dtoa
+        init_guess = self.estimate_pos_bancroft(dtoa)
         init_guess = init_guess if init_guess is not None else np.random.normal(size=3)
         opt = {'disp': 0}
         opt_method = 'Powell'

@@ -234,17 +234,15 @@ class _Simulated(ReceiverArrayInterface):
                     time=rospy.Time.now(),
                     timeout=rospy.Duration(0.20))
             )
-            print 'pinger_in_receiver_frame', pinger_in_receiver_frame[0]
-            print 'pinger_heading_in_receiver_frame', pinger_in_receiver_frame[0] / np.linalg.norm(pinger_in_receiver_frame[0])
             pinger_position_mm = pinger_in_receiver_frame[0] * 1E3  # convert to millimeters
 
             dtoa_us = mlat.generate_dtoa(c=self.c,
                                          source_position=pinger_position_mm,
                                          non_ref_positions=self.receiver_locations)
-            noisy_dtoa = dtoa_us + np.random.normal(scale=self.noise_sigma, size=3)
+            noisy_dtoa_us = dtoa_us + np.random.normal(scale=self.noise_sigma, size=3)
             self.signals = mlat.make_delayed_signals_from_DTOA(
                 reference_signal=ref_signal,
-                dtoa=dtoa_us
+                dtoa=noisy_dtoa_us
             )
 
             self.translation, self.rotation = _pose_from_tf(
@@ -254,8 +252,6 @@ class _Simulated(ReceiverArrayInterface):
                     time=rospy.Time.now(),
                     timeout=rospy.Duration(0.20))
             )
-            print 'source:', self.receiver_array_frame
-            print 'target:', self.locating_frame
             self.ready = True
         # Intentionally absorb errors (driver will just timeout)
         except Exception:

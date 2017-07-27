@@ -13,7 +13,7 @@ sampling_freq : 500000
 locating_frame : map
 pinger_frame : pinger
 receiver_array_frame : hydrophones
-noise_sigma : 0.01
+noise_sigma : 0.1
 
 # Algorithm parameters
 method : "LS"
