@@ -91,10 +91,10 @@ class PassiveSonar(object):
             self.input_source = rai._Logged(self.input_src_params['log'])
 
         elif self.input_mode == 'serial':
-            self.input_source = rai._SerialReceiverArray(self.input_src_params['serial'], self.receiver_count)
+            self.input_source = rai._Serial(self.input_src_params['serial'], self.receiver_count)
 
         elif self.input_mode == 'sim':
-            self.input.source = rai._SimulatedReceiverArray(self.input_src_params['sim'])
+            self.input_source = rai._Simulated(self.input_src_params['sim'])
 
         elif self.input_mode == 'custom_cb':
             if not issubclass(custom_input_source, ReceiverArrayInterface):
@@ -126,26 +126,29 @@ class PassiveSonar(object):
         TODO: copy url here
         '''
         # ROS params expected to be loaded under namespace passive_sonar
-        self.required_params = ['receiver_locations', 'method', 'c', 'target_frequency',
-                                'sampling_frequency', 'upsampling_factor', 'locating_frame',
-                                'receiver_array_frame', 'min_variance', 'observation_buffer_size',
-                                'input_timeout']
-        self.input_src_params = \
-        {
-         'serial' : ['port', 'baud', 'tx_request_code', 'tx_start_code', 'read_timeout',
-                     'scalar_size', 'signal_size', 'signal_bias', 'locating_frame',
-                     'receiver_array_frame'],
-         'log'    : ['log_filename' ,'locating_frame', 'receiver_array_frame'],
-         'sim'    : ['locating_frame', 'receiver_array_frame', 'pinger_frame']
+        self.required_params = ['receiver_locations', 'method', 'c',
+                                'pinger_freq', 'sampling_freq',
+                                'upsampling_factor', 'locating_frame',
+                                'receiver_array_frame', 'min_variance',
+                                'observation_buffer_size', 'input_timeout']
+        self.input_src_params = {
+            'serial': ['port', 'baud', 'tx_request_code', 'tx_start_code',
+                       'read_timeout', 'scalar_size', 'receiver_array_frame',
+                       'signal_bias', 'locating_frame', 'signal_size'],
+            'log': ['log_filename', 'locating_frame', 'receiver_array_frame'],
+            'sim': ['locating_frame', 'receiver_array_frame', 'pinger_frame',
+                    'receiver_locations', 'c', 'pinger_freq', 'sampling_freq',
+                    'noise_sigma']
         }
 
-        load = lambda prop: setattr(self, prop, rospy.get_param('passive_sonar/' + prop))
+        def load(prop):
+            setattr(self, prop, rospy.get_param('passive_sonar/' + prop))
         try:
             [load(x) for x in self.required_params]
         except KeyError as e:
             raise IOError('A required rosparam was not declared: ' + str(e))
 
-        self.receiver_count = len(self.receiver_locations) + 1 # Add one for the reference receiver
+        self.receiver_count = len(self.receiver_locations) + 1  # Add one for the reference receiver
         self.receiver_locations = np.array(self.receiver_locations)
 
     def declare_services(self):
@@ -153,12 +156,13 @@ class PassiveSonar(object):
         Conveniently declares all the services offered by the driver
         '''
         service_types = {
-            'get_pulse_heading'        : GetPulseHeading,
-            'estimate_pinger_position' : EstimatePingerPosition,
-            'reset_position_estimate'  : ResetPositionEstimate,
-            'start_logging'            : StartLogging,
-            'save_log'                 : SaveLog,
-            'set_frequency'            : SetFrequency
+            'get_pulse_heading': GetPulseHeading,
+            'estimate_pinger_position_2d': EstimatePingerPosition2D,
+            'estimate_pinger_position_3d': EstimatePingerPosition3D,
+            'reset_position_estimate': ResetPositionEstimate,
+            'start_logging': StartLogging,
+            'save_log': SaveLog,
+            'set_frequency': SetFrequency
         }
         self.services = dict(zip(
             service_types.keys(),
@@ -204,7 +208,7 @@ class PassiveSonar(object):
     @thread_lock(lock)
     def get_pulse_heading(self, srv):
         '''
-        Returns the heading towards an active pinger emmiting at <self.target_frequency>.
+        Returns the heading towards an active pinger emmiting at <self.pinger_freq>.
         Heading will be a unit vector in hydrophone_array frame
         '''
         success, err_str = True, ''
@@ -227,33 +231,39 @@ class PassiveSonar(object):
             # Carry out multilateration to get heading to pinger
             dtoa, cross_corrs = mlat.get_dtoas(ref_signal=signals[0], non_ref_signals=signals[1:])
             self.visualize_dsp(signals, cross_corrs, dtoa)
-            heading = self.multilaterator.get_pulse_location(dtoa)
+            heading = self.multilaterator.get_pulse_location(dtoa, method=srv.method)
             heading = heading / np.linalg.norm(heading)
+            rospy.loginfo('Receiver position: {}\nHeading to pinger: {}\nDTOA: {}'.format(p0, heading, dtoa))
 
         except Exception as e:
-            rospy.logerr(str(e))
+            rospy.logerr(traceback.format_exc())
             heading = np.full(3, np.NaN)
+            dtoa = []
             success = False
-            err_str = str(e)
+            err_str = traceback.format_exc()
+            return GetPulseHeading(header=make_header(stamp=time, frame=self.locating_frame),
 
-        res = GetPulseHeadingResponse(header=make_header(stamp=time, frame=self.locating_frame),
-                                      x=heading[0], y=heading[1], z=heading[2],
-                                      success=success, err_str=err_str)
+
+        res = GetPulseHeadingResponse(
+            header=make_header(stamp=time, frame=self.locating_frame),
+            x=heading[0], y=heading[1], z=heading[2],
+            dtoa=dtoa,
+            success=success,
+            err_str=err_str)
 
         # Log input if self.logging_enabled == True
         self.log_data(signals, p0, R)
 
         # Add heaing observation to buffers if the signals are above the variance threshold
         try:
-
             variance = np.var(np.array([s.samples for s in signals]).flatten())
-            print variance, self.min_variance
             # if variance > self.min_variance:  # Volume threshold, would be good to also have freq check
-            if True:
-                map_offset = R.dot(heading)
-                p1 = p0 + map_offset
+            if np.all(np.isfinite(variance)):  # checks for not being NAN or inf/ -inf
+                angles = transformations.euler_from_matrix(R)
+                delta = R.dot(heading)
+                p1 = p0 + delta
 
-                self.visualize_heading(p0, p1, bgra=[1.0, 0, 0, 0.50], length=4.0)
+                self.visualize_heading(p0, p1, bgra=[1.0, 1.0, 1.0, 0.50], length=4.0)
 
                 self.heading_start = np.append(self.heading_start, np.array([p0]), axis=0)
                 self.heading_end = np.append(self.heading_end, np.array([p1]), axis=0)
@@ -263,21 +273,32 @@ class PassiveSonar(object):
                 if len(self.heading_start) >= self.observation_buffer_size:
                     rospy.logwarn('Observation buffer full, deleting old headings')
                     softest_idx = np.argmin(self.observation_variances)
-                    self.heading_start = np.delete(self.line_array, softest_idx, axis=0)
-                    self.heading_end = np.delete(self.line_array, softest_idx, axis=0)
+                    self.heading_start = np.delete(self.heading_start, softest_idx, axis=0)
+                    self.heading_end = np.delete(self.heading_end, softest_idx, axis=0)
                     self.observation_variances = np.delete(self.observation_variances, softest_idx, axis=0)
 
                 rospy.loginfo('Added heading {} to the observation buffer (size={})'
                               .format(heading, len(self.heading_start)))
-                print 'buffer shapes:', self.heading_start.shape, self.heading_end.shape
         except Exception as e:
             rospy.logwarn(traceback.format_exc())
             rospy.logwarn(str(e))  # Service should still return
 
-        print "{}\n{}".format(type(res), res)
+        # print "{}\n{}".format(type(res), res)
         return res
 
-    def estimate_pinger_position(self, req):
+    def estimate_pinger_position_2d(self, req):
+        if len(self.heading_start) < 1:
+            raise RuntimeError(
+                'Not enough heading observations to estimate the pinger position')
+        p = mlat.ls_line_intersection2d(self.heading_start[:, :2], self.heading_end[:, :2])
+        self.pinger_position_2d = np.array([p[0], p[1], 0])
+        self.visualize_pinger_pos_estimate(dim=2, bgra=[255, 0.0, 255, 0.75])
+        return EstimatePingerPosition2DResponse(
+            header=make_header(stamp=rospy.Time.now(), frame=self.locating_frame),
+            num_headings=len(self.heading_start),
+            x=p[0], y=p[1])
+
+    def estimate_pinger_position_3d(self, req):
         '''
         Uses a buffer of prior observations to estimate the position of the pinger as the intersection
         of a set of 3d lines in the least-squares sense.
@@ -285,14 +306,13 @@ class PassiveSonar(object):
         if len(self.heading_start) < 1:
             raise RuntimeError(
                 'Not enough heading observations to estimate the pinger position')
-        self.pinger_position = mlat.ls_line_intersection3d(self.heading_start, self.heading_end)
-        self.visualize_pinger_pos_estimate()
-        return EstimatePingerPositionResponse(header=make_header(stamp=rospy.Time.now(),
-                                                                 frame=self.locating_frame),
-                                              num_headings=len(self.heading_start),
-                                              x=self.pinger_position[0],
-                                              y=self.pinger_position[1],
-                                              z=self.pinger_position[2])
+        p = mlat.ls_line_intersection3d(self.heading_start, self.heading_end)
+        self.pinger_position_3d = np.array([p[0], p[1], p[2]])
+        self.visualize_pinger_pos_estimate(dim=3, bgra=[0.0, 255, 255, 0.75])
+        return EstimatePingerPosition3DResponse(
+            header=make_header(stamp=rospy.Time.now(), frame=self.locating_frame),
+            num_headings=len(self.heading_start),
+            x=p[0], y=p[1], z=p[2])
 
     def reset_position_estimate(self, req):
         '''
@@ -301,7 +321,8 @@ class PassiveSonar(object):
         self.heading_start = np.empty((0, 3), float)
         self.heading_end = np.empty((0, 3), float)
         self.observation_variances = np.empty((0, 0), float)
-        self.pinger_position = np.array([np.NaN, np.NaN, np.NaN])
+        self.pinger_position_2d = np.array([np.NaN, np.NaN, np.NaN])
+        self.pinger_position_3d = np.array([np.NaN, np.NaN, np.NaN])
         return {}
 
     def start_logging(self, req):
@@ -339,11 +360,12 @@ class PassiveSonar(object):
         '''
         Sets the assumed frequency (in absence of noise) of the signals to received by the driver
         '''
-        self.target_frequency = req.frequency
+        self.pinger_freq = req.frequency
         self.heading_start = np.empty((0, 3), float)
         self.heading_end = np.empty((0, 3), float)
         self.sample_variances = np.empty((0, 1), float)
-        self.pinger_position = np.array([np.NaN, np.NaN, np.NaN])
+        self.pinger_position_2d = np.array([np.NaN, np.NaN, np.NaN])
+        self.pinger_position_3d = np.array([np.NaN, np.NaN, np.NaN])
         return {}
 
     # Visualization
@@ -377,11 +399,10 @@ class PassiveSonar(object):
 
         try:
             self.plot_pub.publish(CvBridge().cv2_to_imgmsg(plot_img, 'bgr8'))
-            print 'published signals img'
         except CvBridgeError as e:
             rospy.logerr(e)  # Intentionally absorb CvBridge Errors
 
-    def visualize_pinger_pos_estimate(self, bgra=[255, 255, 255, 1.0]):
+    def visualize_pinger_pos_estimate(self, dim, bgra=[255, 255, 255, 1.0]):
         '''
         Publishes a marker to RVIZ representing the last calculated estimate of the position of
         the pinger.
@@ -390,18 +411,26 @@ class PassiveSonar(object):
             transparency of the marker
         '''
         marker = Marker()
-        marker.ns = "passive_sonar-{}".format(self.target_frequency)
+        marker.ns = "passive_sonar-{}".format(self.pinger_freq)
         marker.header.stamp = rospy.Time(0)
         marker.header.frame_id = self.locating_frame
         marker.type = marker.SPHERE
         marker.action = marker.ADD
         marker.scale.x = 0.2
+        marker.scale.y = 0.2
+        marker.scale.z = 0.2
         bgra = np.clip(bgra, 0.0, 1.0)
         marker.color.b = bgra[0]
         marker.color.g = bgra[1]
         marker.color.r = bgra[2]
         marker.color.a = 1.0 if len(bgra) < 4 else bgra[3]
-        marker.pose.position = numpy_to_point(self.pinger_position)
+        if dim == 2:
+            marker.pose.position = numpy_to_point(self.pinger_position_2d)
+        elif dim == 3:
+            marker.pose.position = numpy_to_point(self.pinger_position_3d)
+        else:
+            rospy.logwarn('Invalid dim parameter passed to visualize_pinger_pos_estimate')
+
         self.rviz_pub.publish(marker)
 
     def visualize_heading(self, tail, head, bgra, length=1.0):
@@ -413,11 +442,11 @@ class PassiveSonar(object):
         lenth - scalar (float, int) desired length of the arrow marker. If None, length will
             be unchanged.
         '''
-        head = tail + (head - tail) * length
+        head = tail + (head - tail) / np.linalg.norm(head - tail) * length
         head = Point(head[0], head[1], head[2])
         tail = Point(tail[0], tail[1], tail[2])
         marker = Marker()
-        marker.ns = "passive_sonar-{}/heading".format(self.target_frequency)
+        marker.ns = "passive_sonar-{}/heading".format(self.pinger_freq)
         marker.header.stamp = rospy.Time(0)
         marker.header.frame_id = self.locating_frame
         marker.type = marker.ARROW
