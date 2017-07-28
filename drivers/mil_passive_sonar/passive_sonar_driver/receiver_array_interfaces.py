@@ -1,21 +1,26 @@
 #!/usr/bin/env python
-from __future__ import division
-
-from gazebo_msgs.srv import GetModelState
-import multilateration as mlat
-import numpy as np
-import rospy
-import serial
-import tf2_ros
-from tf import transformations
-import traceback
-
-__author__ = 'David Soto'
-
 '''
 This file contains multiple receiver array interfaces for both simulated and real passive
 sonar functionality
 '''
+
+
+from __future__ import division
+
+import serial
+import traceback
+import numpy as np
+
+import rospy
+import tf2_ros
+from tf import transformations
+from gazebo_msgs.srv import GetModelState
+
+import multilateration as mlat
+from hydrophones.msg import Ping
+
+
+__author__ = 'David Soto'
 
 
 def _load_interface_params(interface, param_names):
@@ -174,6 +179,71 @@ class _Serial(ReceiverArrayInterface):
 
                 self.signals[channel, i] = float(
                     error_correction(self.ser.read(self.scalar_size))) - self.signal_bias
+
+
+class _PaulBoard(ReceiverArrayInterface):
+    '''
+    This is the Paul Board serial ReceiverArrayInterface for the passive sonar
+    driver. It is used when the keyword arg input_mode='paul_board' is passed
+    to the passive sonar driver constructor.
+    '''
+    def __init__(self, param_names):
+        _load_interface_params(self, param_names)
+
+        self.tf2_buf = tf2_ros.Buffer()
+        self.tf2_list = tf2_ros.TransformListener(self.tf2_buf)
+
+        self.latest_ping = Ping()
+        self.cached_ping = Ping()
+
+        rospy.Subscriber("/hydrophones/ping", Ping, self._cache_ping)
+
+    def _cache_ping(self, msg):
+        '''
+        Store the latest ping inside this reciever array interface object
+        whenever a new one is received.
+        '''
+        self.latest_ping = msg
+
+    def input_request(self):
+        '''
+        Extracts the required information from the latest cached Ping message
+        and converts it into the required format.
+        '''
+        self.cached_ping = self.latest_ping
+        self._parse_samples()
+        self.translation, self.rotation = _pose_from_tf(
+            self.tf2_buf.lookup_transform(
+                    target_frame=self.receiver_array_frame,
+                    source_frame=self.locating_frame,
+                    time=self.cached_ping.header.stamp,
+                    timeout=rospy.Duration(0.20))
+            )
+        self.ready = True
+
+    def _parse_samples(self):
+        '''
+        Parse the samples in the Ping message into a set of four TimeSignal1D
+        objects ordered based on the arrangement of the hydrophones.
+        '''
+        self.signals = []
+
+        # Reverse the list of samples so that they can be popped off in order
+        reversed_data = list(self.cached_ping.data)[::-1]
+
+        num_channels = self.cached_ping.channels
+        print(num_channels)
+        num_samples_per_channel = int(self.cached_ping.samples / num_channels)
+
+        # Create a TimeSignal1D object for each channel
+        for channel_index in xrange(num_channels):
+            samples = []
+
+            # Fill the TimeSignal1D object with the amount of samples in a channel
+            for sample_index in xrange(num_samples_per_channel):
+                samples.append(self.cached_ping.data[(sample_index * 4) + channel_index])
+            time_signal_1d = mlat.TimeSignal1D(samples=np.array(samples, dtype=float), sampling_freq=self.sampling_freq)
+            self.signals.append(time_signal_1d)
 
 
 class _Logged(ReceiverArrayInterface):

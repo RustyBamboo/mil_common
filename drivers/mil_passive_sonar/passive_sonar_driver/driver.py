@@ -47,9 +47,10 @@ class PassiveSonar(object):
 
     Args:
     * input_mode - one of the following strings: ['serial', 'log', 'signal_cb']
-        'serial'    - get signal input with a data acquistion board via a serial port
-        'log'       - get signal input from a .npz file saved to disk
-        'signal_cb' - get signal input from user provided function
+        'serial'     - get signal input with a data acquistion board via a serial port
+        'paul_board' - get signal input with a paul board via a Ping message
+        'log'        - get signal input from a .npz file saved to disk
+        'signal_cb'  - get signal input from user provided function
         For more information on how to use each of these modes, read the wiki page.
     * signal_callback - Optional function used as a source of input if in 'signal_cb' mode
 
@@ -93,6 +94,9 @@ class PassiveSonar(object):
         elif self.input_mode == 'serial':
             self.input_source = rai._Serial(self.input_src_params['serial'], self.receiver_count)
 
+        elif self.input_mode == 'paul_board':
+            self.input_source = rai._PaulBoard(self.input_src_params['paul_board'])
+
         elif self.input_mode == 'sim':
             self.input_source = rai._Simulated(self.input_src_params['sim'])
 
@@ -122,7 +126,7 @@ class PassiveSonar(object):
         Loads all the parameters needed for receiving and processing signals from the passive
         sonar board and calculating headings towards an active pinger.
 
-        These parameters are descrived in detail in the Passive Sonar page of the mil_common wiki.
+        These parameters are described in detail in the Passive Sonar page of the mil_common wiki.
         TODO: copy url here
         '''
         # ROS params expected to be loaded under namespace passive_sonar
@@ -135,6 +139,8 @@ class PassiveSonar(object):
             'serial': ['port', 'baud', 'tx_request_code', 'tx_start_code',
                        'read_timeout', 'scalar_size', 'receiver_array_frame',
                        'signal_bias', 'locating_frame', 'signal_size'],
+            'paul_board' : ['receiver_array_frame', 'locating_frame',
+                            'sampling_freq'],
             'log': ['log_filename', 'locating_frame', 'receiver_array_frame'],
             'sim': ['locating_frame', 'receiver_array_frame', 'pinger_frame',
                     'receiver_locations', 'c', 'pinger_freq', 'sampling_freq',
@@ -241,7 +247,6 @@ class PassiveSonar(object):
             dtoa = []
             success = False
             err_str = traceback.format_exc()
-            return GetPulseHeading(header=make_header(stamp=time, frame=self.locating_frame),
 
 
         res = GetPulseHeadingResponse(
@@ -475,4 +480,3 @@ if __name__ == "__main__":
 
     ping_ping_motherfucker = PassiveSonar(input_mode=mode)
     rospy.spin()
-
