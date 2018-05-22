@@ -4,7 +4,6 @@ import serial
 import numpy
 
 import roslib
-roslib.load_manifest('paulboard_driver')
 import rospy
 
 from std_msgs.msg import Header
@@ -115,7 +114,7 @@ def check_board_bootloaded(ser):
     return False
 
 def bootload_board(ser):
-    path = roslib.packages.resource_file('paulboard_driver', 'blobs', 'SimpleHyd2013.bin')
+    path = roslib.packages.resource_file('mil_passive_sonar', 'paulboard_driver', 'SimpleHyd2013.bin')
     print 'Bin path: ', path
     ser.timeout = 1
     ser.baudrate = 115200
