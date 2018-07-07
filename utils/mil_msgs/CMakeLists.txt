@@ -7,8 +7,8 @@ find_package(catkin
     geometry_msgs
     sensor_msgs
     actionlib
-    interactive_markers
     std_msgs
+    std_srvs
     actionlib_msgs
 )
 
@@ -37,9 +37,26 @@ add_service_files(FILES
 )
 
 generate_messages(
-    DEPENDENCIES std_msgs actionlib_msgs geometry_msgs sensor_msgs
+  DEPENDENCIES std_msgs actionlib_msgs geometry_msgs sensor_msgs
 )
+
 catkin_package(
-    CATKIN_DEPENDS message_generation message_runtime geometry_msgs actionlib std_msgs actionlib_msgs
+  DEPENDS
+  CATKIN_DEPENDS 
+    message_generation
+    message_runtime
+    geometry_msgs
+    actionlib
+    std_msgs
+    std_srvs
+    actionlib_msgs
+  INCLUDE_DIRS
+  LIBRARIES
+)
+
+include_directories(
+  SYSTEM
+    ${Boost_INCLUDE_DIR}
+    ${catkin_INCLUDE_DIRS}
 )
 

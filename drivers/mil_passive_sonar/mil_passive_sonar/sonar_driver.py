@@ -49,15 +49,9 @@ class Sub8Sonar():
 
         alarm_broadcaster = AlarmBroadcaster()
         self.disconnection_alarm = alarm_broadcaster.add_alarm(
-            name='sonar_disconnect',
-            action_required=True,
-            severity=0
-        )
+            name='sonar_disconnect', action_required=True, severity=0)
         self.packet_error_alarm = alarm_broadcaster.add_alarm(
-            name='sonar_packet_error',
-            action_required=False,
-            severity=2
-        )
+            name='sonar_packet_error', action_required=False, severity=2)
 
         try:
             self.ser = serial.Serial(port=port, baudrate=baud, timeout=None)
@@ -69,11 +63,13 @@ class Sub8Sonar():
         self.c = c
         self.hydrophone_locations = []
         for key in hydrophone_locations:
-            sensor_location = np.array(
-                [hydrophone_locations[key]['x'], hydrophone_locations[key]['y'], hydrophone_locations[key]['z']])
+            sensor_location = np.array([
+                hydrophone_locations[key]['x'], hydrophone_locations[key]['y'],
+                hydrophone_locations[key]['z']
+            ])
             self.hydrophone_locations += [sensor_location]
-        self.multilaterator = Multilaterator(
-            hydrophone_locations, self.c, method)  # speed of sound in m/s
+        self.multilaterator = Multilaterator(hydrophone_locations, self.c,
+                                             method)  # speed of sound in m/s
         self.est_signal_freq_kHz = 0
         self._freq_sum = 0
         self._freq_samples = 0
@@ -92,8 +88,8 @@ class Sub8Sonar():
             print "Sent timestamp request..."
         except:  # Except only serial errors in the future.
             self.disconnection_alarm.raise_alarm(
-                problem_description="Sonar board serial connection has been terminated."
-            )
+                problem_description=
+                "Sonar board serial connection has been terminated.")
             return False
         return self.multilaterator.getPulseLocation(self.timestamp_listener())
 
@@ -118,10 +114,9 @@ class Sub8Sonar():
         else:
             self.packet_error_alarm.raise_alarm(
                 problem_description="Sonar board checksum error.",
-                parameters={
-                    'fault_info': {'data': response}
-                }
-            )
+                parameters={'fault_info': {
+                    'data': response
+                }})
             return None
 
     @thread_lock(lock)
@@ -133,8 +128,8 @@ class Sub8Sonar():
             print "Sent raw data request..."
         except:  # Except only serial errors in the future.
             self.disconnection_alarm.raise_alarm(
-                problem_description="Sonar board serial connection has been terminated."
-            )
+                problem_description=
+                "Sonar board serial connection has been terminated.")
             return False
         return self.multilaterator.getPulseLocation(self.raw_data_listener())
 
@@ -180,8 +175,9 @@ class Sub8Sonar():
         raw_signals = raw_signals[:, 0:non_zero_end_idx]
 
         # upsample the signals for successful cross-correlation
-        upsampled_signals = [resample(x, up_factor * len(x))
-                             for x in raw_signals]
+        upsampled_signals = [
+            resample(x, up_factor * len(x)) for x in raw_signals
+        ]
 
         # scale waves so they all have the same variance
         equalized_signals = [x / np.std(x) for x in upsampled_signals]
@@ -195,8 +191,7 @@ class Sub8Sonar():
             zero_crossings = zero_crossings[1:]
             num_crossings -= 1
         waves_between_first_and_last_crossing = (num_crossings - 1) / 2
-        time_between_first_and_last_crossing = t_up[zero_crossings[-1]
-                                                    ] - t_up[zero_crossings[0]]
+        time_between_first_and_last_crossing = t_up[zero_crossings[-1]] - t_up[zero_crossings[0]]
         curr_signal_freq_kHz = 1E3 * waves_between_first_and_last_crossing / \
             time_between_first_and_last_crossing  # kHz
         self._freq_sum += curr_signal_freq_kHz
@@ -233,12 +228,12 @@ class Sub8Sonar():
         ref_end_idx = ref_start_idx + ref_upsamples - 1
         nonref_end_idx = ref_start_idx + nonref_upsamples - 1
 
-        w0_select = w0_upsamp[ref_start_idx: ref_end_idx + 1]
-        w1_select = w1_upsamp[ref_start_idx: nonref_end_idx + 1]
-        w2_select = w2_upsamp[ref_start_idx: nonref_end_idx + 1]
-        w3_select = w3_upsamp[ref_start_idx: nonref_end_idx + 1]
-        t_ref_select = t_up[ref_start_idx: ref_end_idx + 1]
-        t_nonref_select = t_up[ref_start_idx: nonref_end_idx + 1]
+        w0_select = w0_upsamp[ref_start_idx:ref_end_idx + 1]
+        w1_select = w1_upsamp[ref_start_idx:nonref_end_idx + 1]
+        w2_select = w2_upsamp[ref_start_idx:nonref_end_idx + 1]
+        w3_select = w3_upsamp[ref_start_idx:nonref_end_idx + 1]
+        t_ref_select = t_up[ref_start_idx:ref_end_idx + 1]
+        t_nonref_select = t_up[ref_start_idx:nonref_end_idx + 1]
 
         cc1 = np.correlate(w0_select, w1_select, mode='full')
         cc2 = np.correlate(w0_select, w2_select, mode='full')
@@ -256,15 +251,14 @@ class Sub8Sonar():
         ax5 = fig.add_subplot(515)
         axarr = [ax1, ax2, ax3, ax4, ax5]
 
-        axarr[0].plot(t_up, w1_upsamp, 'r', t_up, w2_upsamp, 'g',
-                      t_up, w3_upsamp, 'b', t_up, w0_upsamp, 'k')
+        axarr[0].plot(t_up, w1_upsamp, 'r', t_up, w2_upsamp, 'g', t_up,
+                      w3_upsamp, 'b', t_up, w0_upsamp, 'k')
         axarr[0].axis([0, 60 * samp_period, -3, 3])
         axarr[0].set_title('Signals')
 
-        axarr[1].plot(t_nonref_select, w1_select, 'r',
-                      t_nonref_select, w2_select, 'g',
-                      t_nonref_select, w3_select, 'b',
-                      t_ref_select,    w0_select, 'k')
+        axarr[1].plot(t_nonref_select, w1_select, 'r', t_nonref_select,
+                      w2_select, 'g', t_nonref_select, w3_select, 'b',
+                      t_ref_select, w0_select, 'k')
         axarr[1].set_title('Selected portions')
 
         axarr[2].plot(t_corr, cc1)
@@ -316,6 +310,7 @@ def delete_last_lines(n=1):
 
 
 if __name__ == "__main__":
-    d = Sub8Sonar('LS', 1.484, rospy.get_param('~/sonar_driver/hydrophones'),
-                  "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AH02X4IE-if00-port0",
-                  19200)
+    d = Sub8Sonar(
+        'LS', 1.484, rospy.get_param('~/sonar_driver/hydrophones'),
+        "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AH02X4IE-if00-port0",
+        19200)
